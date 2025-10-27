@@ -1,10 +1,12 @@
 package com.example.deskclean.security;
 
 import java.io.IOException;
-import java.util.Collections;
+// import java.util.Collections; // 제거
+import java.util.Optional; // Optional 임포트
 
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails; // UserDetails 임포트
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -16,7 +18,6 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
-// 매요청마다 헤더를 읽고 JWT 토큰이 유효한 경우 Spring Security의 인증 정보로 설정해주는 역할
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
@@ -38,13 +39,23 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (StringUtils.hasText(authHeader) && authHeader.startsWith("Bearer ")) {
             String token = authHeader.substring(7);
             if (jwtUtil.isValidToken(token) && !jwtUtil.isTokenExpired(token)) {
-                String username = jwtUtil.extractUsername(token);
+                // --- 수정: extractUsername이 실제로는 이메일을 반환 ---
+                String email = jwtUtil.extractUsername(token);
 
-                User user = userRepository.findByUsername(username).orElse(null);
-                if (user != null) {
-                    UsernamePasswordAuthenticationToken auth =
-                            new UsernamePasswordAuthenticationToken(user, null, Collections.emptyList());
-                    SecurityContextHolder.getContext().setAuthentication(auth);
+                // --- 수정: 이메일로 사용자 조회 ---
+                Optional<User> userOptional = userRepository.findByEmail(email); // findByEmail 사용
+
+                if (userOptional.isPresent()) {
+                    User user = userOptional.get();
+                    // --- 수정: CustomUserDetails 사용 및 권한 설정 ---
+                    UserDetails userDetails = new CustomUserDetails(user); // CustomUserDetails 생성
+                    UsernamePasswordAuthenticationToken authentication =
+                            new UsernamePasswordAuthenticationToken(
+                                    userDetails, // Principal로 UserDetails 사용
+                                    null,        // Credentials는 필요 없음 (JWT 사용)
+                                    userDetails.getAuthorities() // 권한 정보 전달
+                            );
+                    SecurityContextHolder.getContext().setAuthentication(authentication);
                 }
             }
         }
